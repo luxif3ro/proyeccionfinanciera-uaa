@@ -1,0 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+html {
+    background-image: url("/background.webp");
+    background-size: cover;
+    background-position: center;
+    background-attachment: scroll;
+    font-family: "Roboto", sans-serif;
+  }
+  
