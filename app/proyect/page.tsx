@@ -1,7 +1,11 @@
 "use client";
-import React from "react";
+import React, { Suspense } from "react";
 import ProyectView from "./view/proyectview";
 
 export default function ProyectPage() {
-  return <ProyectView name={null} />;
+  return (
+    <Suspense fallback={<div>cargando...</div>}>
+      <ProyectView name={null} />
+    </Suspense>
+  );
 }

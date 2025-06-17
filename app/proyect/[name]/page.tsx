@@ -1,6 +1,6 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
-import React from "react";
+import React, { Suspense } from "react";
 import ProyectView from "../view/proyectview";
 import { useParams } from "next/navigation";
 
@@ -9,8 +9,16 @@ export default function ProyectPage() {
   const name = decodeURIComponent(params.name as string);
   const { role } = useAuth();
   if (role === "admin" || role === "user") {
-    return <ProyectView name={name} />;
+    return (
+      <Suspense fallback={<div>cargando...</div>}>
+        <ProyectView name={name} />
+      </Suspense>
+    );
   } else {
-    <ProyectView name={null} />;
+    return (
+      <Suspense fallback={<div>cargando...</div>}>
+        <ProyectView name={null} />
+      </Suspense>
+    );
   }
 }
