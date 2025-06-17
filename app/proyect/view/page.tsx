@@ -13,7 +13,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export default function ProyectView() {
+interface props{
+name:string| null
+}
+
+export default function ProyectView({name}:props) {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get("id");
