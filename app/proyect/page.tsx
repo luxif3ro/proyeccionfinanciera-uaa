@@ -5,7 +5,7 @@ import ProyectView from "./view/proyectview";
 export default function ProyectPage() {
   return (
     <Suspense fallback={<div>cargando...</div>}>
-      <ProyectView/>
+      <ProyectView name=""/>
     </Suspense>
   );
 }
