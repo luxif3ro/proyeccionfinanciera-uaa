@@ -1,3 +1,4 @@
+"use client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParams } from "next/navigation";
 import React, { Suspense } from "react";
@@ -10,13 +11,13 @@ export default function ProyectPage() {
   if (role === "admin" || role === "user") {
     return (
       <Suspense fallback={<div>cargando...</div>}>
-        <FinancialPage name={name}/>
+        <FinancialPage name={name} />
       </Suspense>
     );
   } else {
     return (
       <Suspense fallback={<div>cargando...</div>}>
-        <FinancialPage name={name}/>
+        <FinancialPage name={name} />
       </Suspense>
     );
   }
