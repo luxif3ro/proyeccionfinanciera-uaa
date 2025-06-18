@@ -8,11 +8,7 @@ import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-
-type Categoria = {
-  id_categoria: string;
-  nombre: string;
-};
+import { Categoria } from "@/types";
 
 type Props = {
   selectedCategory: string;

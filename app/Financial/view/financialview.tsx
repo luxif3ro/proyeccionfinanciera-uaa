@@ -80,8 +80,12 @@ interface Mes {
   mes: string;
   demanda: string;
 }
+interface props{
+  name:string
+}
 
-export default function FinancialPage() {
+export default function FinancialPage({name}:props) {
+  
   //Necesarios para actualizar activos --Inicio
   const [listaActivos, setListaActivos] = useState<Activos[]>([]);
   const [activoConcepto, setActivoConcepto] = React.useState<string>("");

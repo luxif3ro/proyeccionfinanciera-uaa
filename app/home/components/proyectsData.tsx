@@ -14,38 +14,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-
-// Tipos
-type Categoria = {
-  id_categoria: string;
-  nombre: string;
-};
-
-type Muestra = {
-  id_muestra: number;
-  es_actual: boolean;
-  fecha: string;
-};
-
-type Maestro = {
-  id_maestro: number;
-  nombre: string;
-  apellido_paterno: string | null;
-  apellido_materno: string | null;
-};
-
-type Proyect = {
-  id_proyecto: number;
-  nombre: string;
-  docente: string;
-  id_categoria: string;
-  id_maestro: number;
-  id_muestra: number;
-  descripcion: string;
-  categoria?: Categoria;
-  muestra?: Muestra;
-  maestro?: Maestro;
-};
+import { Proyecto } from "@/types";
 
 type ProyectsDataProps = {
   search: string;
@@ -60,19 +29,21 @@ export default function ProyectsData({
 }: ProyectsDataProps) {
   const router = useRouter();
   const { role } = useAuth();
-  const [proyectos, setProyectos] = useState<Proyect[]>([]);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
 
   useEffect(() => {
+    let channel = supabase.channel("public:proyecto");
+
     const fetchData = async () => {
       let query = supabase
         .from("proyecto")
         .select(
           `
-          *,
-          categoria:categoria(id_categoria, nombre),
-          muestra:muestra(id_muestra, es_actual, fecha),
-          maestro:maestro(id_maestro, nombre, apellido_paterno, apellido_materno)
-        `
+        *,
+        categoria:categoria(id_categoria, nombre),
+        muestra:muestra(id_muestra, es_actual, fecha),
+        maestro:maestro(id_maestro, nombre, apellido_paterno, apellido_materno)
+      `
         )
         .neq("tipo", "ADMIN");
 
@@ -101,7 +72,25 @@ export default function ProyectsData({
       }
     };
 
+    // Ejecuta fetch inicial
     fetchData();
+
+    // Suscribirse a los cambios en la tabla 'proyecto'
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "proyecto" },
+      (payload: any) => {
+        console.log("Evento realtime:", payload);
+        fetchData();
+      }
+    );
+
+    channel.subscribe();
+
+    // Cleanup al desmontar o cuando cambian dependencias
+    return () => {
+      channel.unsubscribe();
+    };
   }, [search, category, keywords]);
 
   return (
@@ -118,20 +107,24 @@ export default function ProyectsData({
           {proyectos.map((proyect) => {
             const maestro = proyect.maestro;
             const nombreCompletoMaestro = maestro
-              ? [maestro.nombre, maestro.apellido_paterno, maestro.apellido_materno]
+              ? [
+                  maestro.nombre,
+                  maestro.apellido_paterno,
+                  maestro.apellido_materno,
+                ]
                   .filter(Boolean)
                   .join(" ")
-              : proyect.docente;
+              : proyect.maestro?.nombre;
 
             return (
               <TableRow key={proyect.id_proyecto}>
                 <TableCell>{proyect.nombre}</TableCell>
                 <TableCell>{nombreCompletoMaestro}</TableCell>
                 <TableCell>
-                  {proyect.categoria?.nombre || proyect.id_categoria}
+                  {proyect.categoria?.nombre || proyect.categoria?.id_categoria}
                 </TableCell>
                 <TableCell>
-                  {proyect.muestra?.fecha || proyect.id_muestra}
+                  {proyect.muestra?.fecha || proyect.muestra?.id_muestra}
                 </TableCell>
                 <TableCell>
                   <Button

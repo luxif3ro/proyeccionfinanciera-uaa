@@ -7,26 +7,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Image } from "@heroui/image";
 import { Avatar } from "@heroui/avatar";
 import { supabase } from "@/lib/supabaseClient";
-
-type Proyecto = {
-  id_proyecto: number;
-  nombre: string;
-  descripcion: string;
-  slogan: string;
-  logo?: string | null;
-  imagen?: string | null;
-  categoria?: {
-    nombre: string;
-  };
-  muestra?: {
-    fecha: string;
-  };
-  maestro?: {
-    nombre: string;
-    apellido_paterno: string | null;
-    apellido_materno: string | null;
-  };
-};
+import { Proyecto } from "@/types";
 
 export default function ProyectViewPage() {
   const router = useRouter();
@@ -36,15 +17,19 @@ export default function ProyectViewPage() {
   const [proyecto, setProyecto] = useState<Proyecto | null>(null);
 
   useEffect(() => {
+    if (!Name) return;
+
     const fetchProyecto = async () => {
       const { data, error } = await supabase
         .from("proyecto")
-        .select(`
-          *,
-          categoria(id_categoria, nombre),
-          muestra(id_muestra, fecha),
-          maestro(id_maestro, nombre, apellido_paterno, apellido_materno)
-        `)
+        .select(
+          `
+        *,
+        categoria(id_categoria, nombre),
+        muestra(id_muestra, fecha),
+        maestro(id_maestro, nombre, apellido_paterno, apellido_materno)
+      `
+        )
         .eq("nombre", Name)
         .neq("tipo", "ADMIN")
         .single();
@@ -53,11 +38,13 @@ export default function ProyectViewPage() {
         console.error("Error al obtener el proyecto:", error);
       } else {
         const logoUrl = data.logo
-          ? supabase.storage.from("logos").getPublicUrl(data.logo).data.publicUrl
+          ? supabase.storage.from("logos").getPublicUrl(data.logo).data
+              .publicUrl
           : null;
 
         const imageUrl = data.imagen
-          ? supabase.storage.from("imagenes").getPublicUrl(data.imagen).data.publicUrl
+          ? supabase.storage.from("imagenes").getPublicUrl(data.imagen).data
+              .publicUrl
           : null;
 
         setProyecto({
@@ -69,6 +56,29 @@ export default function ProyectViewPage() {
     };
 
     fetchProyecto();
+
+    // Crear canal para suscripción realtime
+    const channel = supabase.channel(`realtime-proyecto-${Name}`);
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "proyecto",
+        filter: `nombre=eq.${Name}`,
+      },
+      (payload: any) => {
+        console.log("Proyecto actualizado en realtime:", payload);
+        fetchProyecto();
+      }
+    );
+
+    channel.subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, [Name]);
 
   const nombreCompletoMaestro = [
@@ -78,12 +88,14 @@ export default function ProyectViewPage() {
   ]
     .filter(Boolean)
     .join(" ");
-  console.log(proyecto)
   return (
     <section className="flex md:w-2/5 justify-center content-center">
       <Card className="w-full flex">
         <CardHeader>
-          <Button className="max-w-8 bg-transparent" onPress={() => router.back()}>
+          <Button
+            className="max-w-8 bg-transparent"
+            onPress={() => router.back()}
+          >
             <ArrowLeft />
           </Button>
         </CardHeader>
@@ -92,8 +104,7 @@ export default function ProyectViewPage() {
             <Avatar
               className="w-20 h-20 text-large"
               src={
-                proyecto?.logo ??
-                "https://heroui.com/images/default-avatar.png"
+                proyecto?.logo ?? "https://heroui.com/images/default-avatar.png"
               }
             />
             <p className="text-primary-400">Nombre:</p>

@@ -1,40 +1,50 @@
 "use client";
 
-import { Card, CardBody, CardHeader, CardFooter } from "@heroui/card";
+import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Button } from "@heroui/button";
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { Maestro, Proyecto } from "@/types";
+import { Button } from "@heroui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import FinancialButton from "@/components/financialButton";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-interface props{
-name:string| null
-}
-
-export default function ProyectView({name}:props) {
+export default function ProyectView({ name }: { name: string }) {
   const router = useRouter();
-  const params = useSearchParams();
-  const id = params.get("id");
+  const id = name;
+  const role = useAuth();
 
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
+  const [constrasena, setContrasena] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
   const [imagen, setImagen] = useState<File | null>(null);
   const [alumnos, setAlumnos] = useState(
     Array(6).fill({
-      id: "",
+      id_alumno: "",
       nombre: "",
       apellido_paterno: "",
       apellido_materno: "",
-      sexo: "",
+      genero: "",
     })
   );
+
+  const [profesores, setProfesores] = useState<Maestro[]>([]);
+  const [muestras, setMuestras] = useState<
+    { id_muestra: number; es_actual: boolean; fecha: string }[]
+  >([]);
+  const [categorias, setCategorias] = useState<
+    { id_categoria: number; nombre: string }[]
+  >([]);
+
+  const [profesorSeleccionado, setProfesorSeleccionado] = useState<string>("");
+  const [muestraSeleccionada, setMuestraSeleccionada] = useState<string>("");
+  const [categoriaSeleccionada, setCategoriaSeleccionada] =
+    useState<string>("");
+
+  const [proyecto, setProyecto] = useState<Proyecto | null>(null);
 
   const handleAlumnoChange = (index: number, field: string, value: string) => {
     const updated = [...alumnos];
@@ -63,16 +73,17 @@ export default function ProyectView({name}:props) {
       if (imagen) imagenUrl = await subirArchivo(imagen, "imagenes");
 
       let proyectoId = id;
+
       if (!id) {
-        // INSERTAR proyecto
         const { data, error } = await supabase
-          .from("proyectos")
+          .from("proyecto")
           .insert({
             nombre,
             descripcion,
             logo: logoUrl,
             imagen: imagenUrl,
-            id_profesor: Number(profesorSeleccionado),
+            tipo: "USER",
+            id_maestro: Number(profesorSeleccionado),
             id_muestra: Number(muestraSeleccionada),
             id_categoria: Number(categoriaSeleccionada),
           })
@@ -80,88 +91,75 @@ export default function ProyectView({name}:props) {
           .single();
 
         if (error) throw error;
-        proyectoId = data.id;
+        proyectoId = data.id_proyecto;
+
+        const alumnosData = alumnos
+          .filter((a) => a.nombre && a.apellido_paterno && a.id_alumno)
+          .map((a) => ({
+            ...a,
+            id_proyecto: Number(proyectoId),
+          }));
+
+        const { error: errorAlumnos } = await supabase
+          .from("alumno")
+          .insert(alumnosData)
+          .select("id_alumno");
+        if (errorAlumnos) throw errorAlumnos;
       } else {
-        // ACTUALIZAR proyecto
         const { error } = await supabase
-          .from("proyectos")
+          .from("proyecto")
           .update({
             nombre,
             descripcion,
             logo: logoUrl,
             imagen: imagenUrl,
-            id_profesor: Number(profesorSeleccionado),
+            id_maestro: Number(profesorSeleccionado),
             id_muestra: Number(muestraSeleccionada),
             id_categoria: Number(categoriaSeleccionada),
           })
-          .eq("id", id);
-
+          .eq("nombre", id);
         if (error) throw error;
-      }
 
-      // Insertar alumnos si es nuevo
-      if (!id && proyectoId) {
-        const alumnosData = alumnos.map((a) => ({
-          ...a,
-          id_proyecto: proyectoId,
-        }));
-        const { error: errorAlumnos } = await supabase
-          .from("alumnos")
-          .insert(alumnosData);
-        if (errorAlumnos) throw errorAlumnos;
+        for (const alumno of alumnos) {
+          if (!alumno.id_alumno) continue;
+          const { error: errorUpdate } = await supabase
+            .from("alumno")
+            .update({
+              nombre: alumno.nombre,
+              apellido_paterno: alumno.apellido_paterno,
+              apellido_materno: alumno.apellido_materno,
+              genero: alumno.genero,
+            })
+            .eq("id_alumno", alumno.id_alumno);
+          if (errorUpdate) throw errorUpdate;
+        }
       }
 
       alert("Proyecto guardado correctamente");
-      router.push("/proyectos");
     } catch (error) {
       alert("Error al guardar: " + (error as Error).message);
     }
   };
-  const [profesores, setProfesores] = useState<
-    {
-      id_profesor: number;
-      nombre: string;
-      apellido_paterno: string;
-      apellido_materno: string;
-    }[]
-  >([]);
-  const [muestras, setMuestras] = useState<
-    { id_muestra: number; es_actual: boolean; fecha: string }[]
-  >([]);
-  const [categorias, setCategorias] = useState<
-    { id_categoria: number; nombre: string }[]
-  >([]);
-
-  // Estados para valores seleccionados
-  const [profesorSeleccionado, setProfesorSeleccionado] = useState<string>("");
-  const [muestraSeleccionada, setMuestraSeleccionada] = useState<string>("");
-  const [categoriaSeleccionada, setCategoriaSeleccionada] =
-    useState<string>("");
 
   useEffect(() => {
     async function cargarDatos() {
       try {
-        // Profesores
-        const { data: profesoresData, error: errorProf } = await supabase
-          .from("profesor")
-          .select("id_profesor, nombre, apellido_paterno, apellido_materno");
-        if (errorProf) throw errorProf;
+        const { data: profesoresData } = await supabase
+          .from("maestro")
+          .select("id_maestro, nombre, apellido_paterno, apellido_materno");
         if (profesoresData) setProfesores(profesoresData);
 
-        // Muestras
-        const { data: muestrasData, error: errorMuestras } = await supabase
+        const { data: muestrasData } = await supabase
           .from("muestra")
           .select("id_muestra, es_actual, fecha");
-        if (errorMuestras) throw errorMuestras;
         if (muestrasData) setMuestras(muestrasData);
 
-        // Categorías
-        const { data: categoriasData, error: errorCat } = await supabase
+        const { data: categoriasData } = await supabase
           .from("categoria")
           .select("id_categoria, nombre");
-        if (errorCat) throw errorCat;
         if (categoriasData) setCategorias(categoriasData);
       } catch (error) {
+        console.error("Error cargando datos:", error);
         alert("Error cargando datos: " + (error as Error).message);
       }
     }
@@ -169,13 +167,99 @@ export default function ProyectView({name}:props) {
     cargarDatos();
   }, []);
 
+  useEffect(() => {
+    if (!id) return;
+
+    let channel = supabase.channel(`realtime-proyecto-${id}`);
+
+    const fetchProyecto = async () => {
+      const { data, error } = await supabase
+        .from("proyecto")
+        .select(
+          `
+        *,
+        categoria(id_categoria, nombre),
+        muestra(id_muestra, fecha),
+        maestro(id_maestro, nombre, apellido_paterno, apellido_materno)
+      `
+        )
+        .eq("nombre", id)
+        .single();
+
+      if (error) {
+        console.error("Error al obtener el proyecto:", error);
+      } else {
+        const logoUrl = data.logo
+          ? supabase.storage.from("logos").getPublicUrl(data.logo).data
+              .publicUrl
+          : null;
+
+        const imageUrl = data.imagen
+          ? supabase.storage.from("imagenes").getPublicUrl(data.imagen).data
+              .publicUrl
+          : null;
+
+        setProyecto({
+          ...data,
+          logo: logoUrl,
+          imagen: imageUrl,
+        });
+
+        const { data: alumnosData } = await supabase
+          .from("alumno")
+          .select("id_alumno, nombre, apellido_paterno, apellido_materno, genero")
+          .eq("id_proyecto", data.id);
+
+        if (alumnosData) {
+          setAlumnos([
+            ...alumnosData,
+            ...Array(Math.max(0, 6 - alumnosData.length)).fill({
+              id_alumno: "",
+              nombre: "",
+              apellido_paterno: "",
+              apellido_materno: "",
+              genero: "",
+            }),
+          ]);
+        }
+      }
+    };
+
+    fetchProyecto();
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "proyecto",
+        filter: `nombre=eq.${id}`,
+      },
+      () => {
+        fetchProyecto();
+      }
+    );
+
+    channel.subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (proyecto) {
+      setNombre(proyecto.nombre);
+      setDescripcion(proyecto.descripcion);
+      setProfesorSeleccionado(String(proyecto.maestro?.id_maestro));
+      setMuestraSeleccionada(String(proyecto.muestra?.id_muestra));
+      setCategoriaSeleccionada(String(proyecto.categoria?.id_categoria));
+    }
+  }, [proyecto]);
+
   return (
     <section
       className="p-4 max-w-3xl mx-auto space-y-6"
-      style={{
-        maxHeight: "100vh", // máximo el alto de la ventana
-        overflowY: "auto", // scroll vertical si excede alto
-      }}
+      style={{ maxHeight: "100vh", overflowY: "auto" }}
     >
       <Card>
         <CardHeader>Información del Proyecto</CardHeader>
@@ -191,6 +275,11 @@ export default function ProyectView({name}:props) {
             onChange={(e) => setDescripcion(e.target.value)}
           />
           <Input
+            label="Contraseña"
+            value={constrasena}
+            onChange={(e) => setContrasena(e.target.value)}
+          />
+          <Input
             type="file"
             label="Logo"
             onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
@@ -200,27 +289,32 @@ export default function ProyectView({name}:props) {
             label="Imagen"
             onChange={(e) => setImagen(e.target.files?.[0] ?? null)}
           />
+
           <Select
             label="Profesor"
-            selectedKeys={profesorSeleccionado}
-            onSelectionChange={(value) =>
-              setProfesorSeleccionado(String(value))
+            selectedKeys={new Set([profesorSeleccionado])}
+            onSelectionChange={(keys) =>
+              setProfesorSeleccionado(String(Array.from(keys)[0]))
             }
           >
             {profesores.map((prof) => (
-              <SelectItem key={prof.id_profesor}>
-                {`${prof.nombre} ${prof.apellido_paterno} ${prof.apellido_materno}`}
+              <SelectItem key={String(prof.id_maestro)}>
+                {`${prof.nombre ?? ""} ${prof.apellido_paterno ?? ""} ${
+                  prof.apellido_materno ?? ""
+                }`}
               </SelectItem>
             ))}
           </Select>
 
           <Select
             label="Muestra"
-            selectedKeys={muestraSeleccionada}
-            onSelectionChange={(value) => setMuestraSeleccionada(String(value))}
+            selectedKeys={new Set([muestraSeleccionada])}
+            onSelectionChange={(keys) =>
+              setMuestraSeleccionada(String(Array.from(keys)[0]))
+            }
           >
             {muestras.map((muestra) => (
-              <SelectItem key={muestra.id_muestra}>
+              <SelectItem key={String(muestra.id_muestra)}>
                 {`${muestra.fecha} ${muestra.es_actual ? "(Actual)" : ""}`}
               </SelectItem>
             ))}
@@ -228,23 +322,26 @@ export default function ProyectView({name}:props) {
 
           <Select
             label="Categoría"
-            selectedKeys={categoriaSeleccionada}
-            onSelectionChange={(value) =>
-              setCategoriaSeleccionada(String(value))
+            selectedKeys={new Set([categoriaSeleccionada])}
+            onSelectionChange={(keys) =>
+              setCategoriaSeleccionada(String(Array.from(keys)[0]))
             }
           >
             {categorias.map((cat) => (
-              <SelectItem key={cat.id_categoria}>{cat.nombre}</SelectItem>
+              <SelectItem key={String(cat.id_categoria)}>
+                {cat.nombre}
+              </SelectItem>
             ))}
           </Select>
 
           {alumnos.map((alumno, index) => (
             <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h3 className="text-lg font-semibold">Alumno {index + 1}</h3>
               <Input
                 label="Matrícula"
-                value={alumno.id}
+                value={alumno.id_alumno}
                 onChange={(e) =>
-                  handleAlumnoChange(index, "id", e.target.value)
+                  handleAlumnoChange(index, "id_alumno", e.target.value)
                 }
               />
               <Input
@@ -269,10 +366,10 @@ export default function ProyectView({name}:props) {
                 }
               />
               <Select
-                label="Sexo"
-                selectedKeys={alumno.sexo}
-                onSelectionChange={(value) =>
-                  handleAlumnoChange(index, "sexo", String(value))
+                label="Género"
+                selectedKeys={new Set([alumno.genero])}
+                onSelectionChange={(keys) =>
+                  handleAlumnoChange(index, "genero", String(Array.from(keys)[0]))
                 }
               >
                 <SelectItem key="Masculino">Masculino</SelectItem>
@@ -281,6 +378,18 @@ export default function ProyectView({name}:props) {
             </div>
           ))}
         </CardBody>
+        <CardFooter className="flex">
+          {role.role === "admin" && <FinancialButton />}
+          <Button
+            onPress={async () => {
+              await handleGuardar();
+              router.push("/home");
+            }}
+          >
+            Guardar
+          </Button>
+          <Button onPress={() => console.log(alumnos)}>alumnos</Button>
+        </CardFooter>
       </Card>
     </section>
   );
